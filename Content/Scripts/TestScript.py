@@ -5,20 +5,27 @@ from pathlib import Path
 FBX_SOURCE_DIR = Path("C:/Unreal Projects/fichiersFBX")
 FBX_DEST = "/Game/Meshes"
 BP_DEST = "/Game/Blueprints"
-PARENT_BLUEPRINT_PATH = "/Game/Models/Meshes/BuildActor"  # Référence de ton Blueprint parent
+TEMPLATE_BP = "/Game/Models/Meshes/BuildActor.BuildActor"
 
 # --- FBX IMPORT UTILS ---
 
 def build_options() -> unreal.FbxImportUI:
     options = unreal.FbxImportUI()
-    options.set_editor_property("import_mesh", True)
-    options.set_editor_property("import_textures", False)
-    options.set_editor_property("import_materials", False)
-    options.set_editor_property("import_as_skeletal", False)
-    options.static_mesh_import_data.set_editor_property("import_uniform_scale", 1.0)
-    options.static_mesh_import_data.set_editor_property("combine_meshes", True)
-    options.static_mesh_import_data.set_editor_property("auto_generate_collision", True)
+    options.import_mesh = True
+    options.import_textures = True
+    options.import_materials = True
+    options.import_as_skeletal = False
+
+    sm_data = options.static_mesh_import_data
+    sm_data.combine_meshes = True
+    sm_data.import_uniform_scale = 1.0
+    sm_data.import_translation = unreal.Vector(0, 0, 0)
+    sm_data.import_rotation = unreal.Rotator(0, 0, 0)
+    sm_data.generate_lightmap_u_vs = True
+    sm_data.auto_generate_collision = True
+
     return options
+
 
 def build_import_task(mesh_name: str, filename: Path, destination_path: str, options: unreal.FbxImportUI):
     task = unreal.AssetImportTask()
@@ -45,81 +52,81 @@ def import_all_meshes(mesh_data: dict):
     ]
     unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks(tasks)
 
-# --- BLUEPRINT CREATION ---
+# --- BLUEPRINT DUPLICATION ---
 
-def make_blueprint(package_path, asset_name, parent_class):
-    if not unreal.EditorAssetLibrary.does_directory_exist(package_path):
-        unreal.EditorAssetLibrary.make_directory(package_path)
+def duplicate_blueprint(source_path: str, dest_path: str):
+    if not unreal.EditorAssetLibrary.does_asset_exist(source_path):
+        raise Exception(f"❌ Le Blueprint source n'existe pas : {source_path}")
 
-    bp_factory = unreal.BlueprintFactory()
-    bp_factory.set_editor_property("ParentClass", parent_class)
+    if unreal.EditorAssetLibrary.does_asset_exist(dest_path):
+        unreal.EditorAssetLibrary.delete_asset(dest_path)
 
-    asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
-    bp = asset_tools.create_asset(
-        asset_name=asset_name,
-        package_path=package_path,
-        asset_class=unreal.Blueprint,
-        factory=bp_factory
+    success = unreal.EditorAssetLibrary.duplicate_asset(source_path, dest_path)
+    if not success:
+        raise Exception(f"❌ La duplication de {source_path} vers {dest_path} a échoué")
+
+    return unreal.EditorAssetLibrary.load_asset(dest_path)
+
+# --- ADD STATIC MESH COMPONENT ---
+
+def add_static_mesh_component_to_blueprint(blueprint: unreal.Blueprint, mesh_path: str, component_name: str = "MeshComponent"):
+    mesh = unreal.EditorAssetLibrary.load_asset(mesh_path)
+    if not isinstance(mesh, unreal.StaticMesh):
+        raise Exception(f"❌ Asset non valide : {mesh_path} n'est pas un StaticMesh")
+
+    subsystem = unreal.get_engine_subsystem(unreal.SubobjectDataSubsystem)
+    handles = subsystem.k2_gather_subobject_data_for_blueprint(blueprint)
+    if not handles:
+        raise Exception("❌ Impossible de récupérer les sous-objets du blueprint.")
+    
+    root_handle = handles[0]
+
+    sub_handle, fail_reason = subsystem.add_new_subobject(
+        unreal.AddNewSubobjectParams(
+            parent_handle=root_handle,
+            new_class=unreal.StaticMeshComponent,
+            blueprint_context=blueprint
+        )
     )
 
-    if not bp:
-        raise Exception(f"❌ Échec de la création du Blueprint '{asset_name}' dans '{package_path}'")
-    
-    print(f"✅ Blueprint créé : {package_path}/{asset_name}")
-    return bp
+    if not fail_reason.is_empty():
+        raise Exception(f"❌ Erreur à l'ajout du composant : {fail_reason}")
 
-# --- STATIC MESH ASSIGNMENT ---
-def add_static_mesh_component_to_blueprint(bp_path, mesh_path):
-    # Convertir les chemins en AssetData
-    bp_asset = unreal.EditorAssetLibrary.find_asset_data(bp_path)
-    mesh_asset = unreal.EditorAssetLibrary.find_asset_data(mesh_path)
+    subsystem.rename_subobject(sub_handle, unreal.Text(component_name))
+    subsystem.attach_subobject(owner_handle=root_handle, child_to_add_handle=sub_handle)
 
-    if not bp_asset.is_valid():
-        unreal.SystemLibrary.print_string(None, f"Failed to load blueprint from {bp_path}")
-        return
+    bfl = unreal.SubobjectDataBlueprintFunctionLibrary
+    component_obj = bfl.get_object(bfl.get_data(sub_handle))
 
-    if not mesh_asset.is_valid():
-        unreal.SystemLibrary.print_string(None, f"Failed to load mesh from {mesh_path}")
-        return
+    if not isinstance(component_obj, unreal.StaticMeshComponent):
+        raise Exception("❌ Le composant récupéré n'est pas un StaticMeshComponent")
 
-    # Charger le blueprint et le mesh depuis l'AssetData
-    blueprint = bp_asset.get_asset()
-    mesh = mesh_asset.get_asset()
+    component_obj.set_static_mesh(mesh)
+    component_obj.set_editor_property("mobility", unreal.ComponentMobility.MOVABLE)
 
-    # Créer un composant StaticMesh et lui assigner le mesh
-    static_mesh_component = unreal.StaticMeshComponent()
-    static_mesh_component.set_static_mesh(mesh)
-
-    # Ajouter le composant StaticMesh au Blueprint
-    # Assure-toi que le Blueprint est valide et qu'il peut recevoir un composant
-    blueprint.add_actor_component(static_mesh_component)
-
-    # Sauvegarder le blueprint après modification
-    unreal.EditorAssetLibrary.save_asset(bp_path)
-    #return True
-
-# --- MAIN ---
+# --- FULL CHAIN ---
 
 def main():
+    print("📁 Recherche des fichiers .fbx dans :", FBX_SOURCE_DIR)
     mesh_data = find_fbx_files(FBX_SOURCE_DIR)
+
     if not mesh_data:
-        print("⚠️ Aucun fichier FBX trouvé.")
+        print("❌ Aucun fichier FBX trouvé.")
         return
 
-    print(f"🔍 Fichiers détectés : {list(mesh_data.keys())}")
-
+    print("🚀 Import FBX vers StaticMesh...")
     import_all_meshes(mesh_data)
 
-    # Charger la classe générée du Blueprint parent
-    bp_generated_class = unreal.EditorAssetLibrary.load_blueprint_class(PARENT_BLUEPRINT_PATH)
-    if not bp_generated_class:
-        raise Exception(f"❌ Classe générée introuvable pour le Blueprint parent : {PARENT_BLUEPRINT_PATH}")
-
-    for mesh_name in mesh_data:
+    for mesh_name in mesh_data.keys():
+        mesh_path = f"{FBX_DEST}/{mesh_name}"
         bp_name = f"BP_{mesh_name}"
-        mesh_path = f"{FBX_DEST}/{mesh_name}.{mesh_name}"
-        bp = make_blueprint(BP_DEST, bp_name, bp_generated_class)
+        bp_path = f"{BP_DEST}/{bp_name}"
+        print(f"\n🔧 Duplication de BuildActor pour {bp_name}")
+
+        bp = duplicate_blueprint(TEMPLATE_BP, bp_path)
         add_static_mesh_component_to_blueprint(bp, mesh_path)
+
+    print("\n✅ Tous les Blueprints ont été créés à partir de BuildActor et configurés avec leurs StaticMesh.")
 
 if __name__ == "__main__":
     main()
