@@ -5,7 +5,7 @@ from pathlib import Path
 FBX_SOURCE_DIR = Path("C:/Unreal Projects/fichiersFBX")
 FBX_DEST = "/Game/Meshes"
 BP_DEST = "/Game/Blueprints"
-TEMPLATE_BP = "/Game/Models/Meshes/BuildActor.BuildActor"
+TEMPLATE_BP = "/Game/Models/Meshes/BuildActor"
 
 # --- FBX IMPORT UTILS ---
 
@@ -58,14 +58,30 @@ def duplicate_blueprint(source_path: str, dest_path: str):
     if not unreal.EditorAssetLibrary.does_asset_exist(source_path):
         raise Exception(f"❌ Le Blueprint source n'existe pas : {source_path}")
 
+    # Supprimer l'ancien asset s'il existe
     if unreal.EditorAssetLibrary.does_asset_exist(dest_path):
         unreal.EditorAssetLibrary.delete_asset(dest_path)
 
-    success = unreal.EditorAssetLibrary.duplicate_asset(source_path, dest_path)
-    if not success:
-        raise Exception(f"❌ La duplication de {source_path} vers {dest_path} a échoué")
+    source_bp = unreal.EditorAssetLibrary.load_asset(source_path)
+    if not isinstance(source_bp, unreal.Blueprint):
+        raise Exception(f"❌ L'asset source n'est pas un Blueprint : {source_path}")
 
-    return unreal.EditorAssetLibrary.load_asset(dest_path)
+    asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
+    package_path = "/".join(dest_path.split("/")[:-1])
+    asset_name = dest_path.split("/")[-1]
+
+    # Dupliquer le blueprint
+    duplicated_bp = asset_tools.duplicate_asset(asset_name, package_path, source_bp)
+    if not duplicated_bp:
+        raise Exception(f"❌ Échec de duplication de {source_path} vers {dest_path}")
+
+    # Vérifie le nom de la classe générée (debug info)
+    generated_class = duplicated_bp.generated_class
+    print(f"✅ Blueprint '{asset_name}' dupliqué. Classe générée : {generated_class}")
+
+    return duplicated_bp
+
+
 
 # --- ADD STATIC MESH COMPONENT ---
 

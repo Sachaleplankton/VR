@@ -5,19 +5,27 @@ from pathlib import Path
 FBX_SOURCE_DIR = Path("C:/Unreal Projects/fichiersFBX")
 FBX_DEST = "/Game/Meshes"
 BP_DEST = "/Game/Blueprints"
+TEMPLATE_BP = "/Game/Models/Meshes/BuildActor"
 
 # --- FBX IMPORT UTILS ---
 
 def build_options() -> unreal.FbxImportUI:
     options = unreal.FbxImportUI()
-    options.set_editor_property("import_mesh", True)
-    options.set_editor_property("import_textures", False)
-    options.set_editor_property("import_materials", False)
-    options.set_editor_property("import_as_skeletal", False)
-    options.static_mesh_import_data.set_editor_property("import_uniform_scale", 1.0)
-    options.static_mesh_import_data.set_editor_property("combine_meshes", True)
-    options.static_mesh_import_data.set_editor_property("auto_generate_collision", True)
+    options.import_mesh = True
+    options.import_textures = True
+    options.import_materials = True
+    options.import_as_skeletal = False
+
+    sm_data = options.static_mesh_import_data
+    sm_data.combine_meshes = True
+    sm_data.import_uniform_scale = 1.0
+    sm_data.import_translation = unreal.Vector(0, 0, 0)
+    sm_data.import_rotation = unreal.Rotator(0, 0, 0)
+    sm_data.generate_lightmap_u_vs = True
+    sm_data.auto_generate_collision = True
+
     return options
+
 
 def build_import_task(mesh_name: str, filename: Path, destination_path: str, options: unreal.FbxImportUI):
     task = unreal.AssetImportTask()
@@ -44,39 +52,24 @@ def import_all_meshes(mesh_data: dict):
     ]
     unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks(tasks)
 
-# --- BLUEPRINT CREATION ---
+# --- BLUEPRINT DUPLICATION ---
 
-def make_blueprint(package_path, asset_name):
-    asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
-    
-    # ✅ Crée le dossier s'il n'existe pas
-    if not unreal.EditorAssetLibrary.does_directory_exist(package_path):
-        unreal.EditorAssetLibrary.make_directory(package_path)
+def duplicate_blueprint(source_path: str, dest_path: str):
+    if not unreal.EditorAssetLibrary.does_asset_exist(source_path):
+        raise Exception(f"❌ Le Blueprint source n'existe pas : {source_path}")
 
-    # ✅ Vérifie si un blueprint avec le même nom existe déjà
-    full_path = f"{package_path}/{asset_name}"
-    if unreal.EditorAssetLibrary.does_asset_exist(full_path):
-        unreal.EditorAssetLibrary.delete_asset(full_path)
+    if unreal.EditorAssetLibrary.does_asset_exist(dest_path):
+        unreal.EditorAssetLibrary.delete_asset(dest_path)
 
-    # Crée le Blueprint
-    bp_factory = unreal.BlueprintFactory()
-    bp_factory.set_editor_property("ParentClass", unreal.Actor)
+    success = unreal.EditorAssetLibrary.duplicate_asset(source_path, dest_path)
+    if not success:
+        raise Exception(f"❌ La duplication de {source_path} vers {dest_path} a échoué")
 
-    bp = asset_tools.create_asset(
-        asset_name=asset_name,
-        package_path=package_path,
-        asset_class=unreal.Blueprint,
-        factory=bp_factory
-    )
+    return unreal.EditorAssetLibrary.load_asset(dest_path)
 
-    if not bp:
-        raise Exception(f"❌ Échec de la création du Blueprint '{asset_name}' dans '{package_path}'")
-    
-    return bp
 # --- ADD STATIC MESH COMPONENT ---
 
 def add_static_mesh_component_to_blueprint(blueprint: unreal.Blueprint, mesh_path: str, component_name: str = "MeshComponent"):
-
     mesh = unreal.EditorAssetLibrary.load_asset(mesh_path)
     if not isinstance(mesh, unreal.StaticMesh):
         raise Exception(f"❌ Asset non valide : {mesh_path} n'est pas un StaticMesh")
@@ -127,12 +120,13 @@ def main():
     for mesh_name in mesh_data.keys():
         mesh_path = f"{FBX_DEST}/{mesh_name}"
         bp_name = f"BP_{mesh_name}"
-        print(f"\n🔧 Création de {bp_name}")
+        bp_path = f"{BP_DEST}/{bp_name}"
+        print(f"\n🔧 Duplication de BuildActor pour {bp_name}")
 
-        bp = make_blueprint(BP_DEST, bp_name)
+        bp = duplicate_blueprint(TEMPLATE_BP, bp_path)
         add_static_mesh_component_to_blueprint(bp, mesh_path)
 
-    print("\n✅ Tous les Blueprints ont été créés et configurés avec leurs StaticMesh.")
+    print("\n✅ Tous les Blueprints ont été créés à partir de BuildActor et configurés avec leurs StaticMesh.")
 
 if __name__ == "__main__":
     main()
