@@ -2,30 +2,54 @@
 #include "HAL/FileManager.h"
 #include "Misc/Paths.h"
 
-TArray<FString> UMyFileUtils::GetFBXAndOBJFilesInFolder(const FString& RelativeOrAbsoluteFolderPath)
+void UMyFileUtils::GetFBXAndOBJFilesInFolder(
+    const FString& RelativeOrAbsoluteFolderPath,
+    TArray<FString>& OutFilenames,
+    bool& Success)
 {
-    TArray<FString> Result;
+    OutFilenames.Empty();
+    Success = false;
 
-    // Convert to absolute path if needed
-    FString FolderPath = FPaths::ConvertRelativePathToFull(RelativeOrAbsoluteFolderPath);
+    // --- Conversion robuste du chemin Unreal vers un chemin disque ---
+    FString FolderPath;
+    if (RelativeOrAbsoluteFolderPath.StartsWith(TEXT("/Game/")))
+    {
+        // Retire "/Game/" et préfixe par le dossier Content du projet
+        const FString RelativePath = RelativeOrAbsoluteFolderPath.Mid(6);
+        FolderPath = FPaths::ProjectContentDir() / RelativePath;
+    }
+    else
+    {
+        // Chemin classique (absolu ou relatif)
+        FolderPath = FPaths::ConvertRelativePathToFull(RelativeOrAbsoluteFolderPath);
+    }
 
-    // Ensure folder ends with "/"
+    // --- Debug log pour vérifier le chemin final ---
+    UE_LOG(LogTemp, Warning, TEXT("Searching folder: %s"), *FolderPath);
+
+    // --- Normalisation du dossier ---
     FPaths::NormalizeDirectoryName(FolderPath);
     if (!FolderPath.EndsWith("/"))
     {
         FolderPath += "/";
     }
 
-    // Wildcards
+    // --- Recherche des fichiers .fbx et .obj ---
     TArray<FString> FoundFiles;
-
-    // Look for both .fbx and .obj
-    IFileManager::Get().FindFiles(FoundFiles, *(FolderPath + "*.fbx"), true, false);
-    Result.Append(FoundFiles);
+    IFileManager::Get().FindFiles(FoundFiles, *(FolderPath + TEXT("*.fbx")), true, false);
+    for (const FString& FileName : FoundFiles)
+    {
+        OutFilenames.Add(FolderPath + FileName);
+    }
 
     FoundFiles.Empty();
-    IFileManager::Get().FindFiles(FoundFiles, *(FolderPath + "*.obj"), true, false);
-    Result.Append(FoundFiles);
+    IFileManager::Get().FindFiles(FoundFiles, *(FolderPath + TEXT("*.obj")), true, false);
+    for (const FString& FileName : FoundFiles)
+    {
+        OutFilenames.Add(FolderPath + FileName);
+    }
 
-    return Result;
+    // --- Succès si au moins un fichier trouvé ---
+    Success = (OutFilenames.Num() > 0);
+    UE_LOG(LogTemp, Warning, TEXT("Found %d files"), OutFilenames.Num());
 }
