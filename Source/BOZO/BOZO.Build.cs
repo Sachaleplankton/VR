@@ -1,23 +1,49 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 using UnrealBuildTool;
+using System.IO;
 
 public class BOZO : ModuleRules
 {
-	public BOZO(ReadOnlyTargetRules Target) : base(Target)
-	{
-		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-	
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore" });
+    public BOZO(ReadOnlyTargetRules Target) : base(Target)
+    {
+        // 1) Mode de PCH
+        PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-		PrivateDependencyModuleNames.AddRange(new string[] {  });
+        // 2) (Optionnel) Si vous avez besoin d'inclure manuellement
+        //    des headers du plugin Assimp dans votre code BOZO C++ :
+        //
+        // string ProjectRoot       = Path.GetFullPath(Path.Combine(ModuleDirectory, "..", ".."));
+        // string AssimpIncludePath = Path.Combine(ProjectRoot, "Plugins", "UE4_Assimp", "Source", "UE_Assimp", "Public");
+        // PublicIncludePaths.Add(AssimpIncludePath);
 
-		// Uncomment if you are using Slate UI
-		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
-		
-		// Uncomment if you are using online features
-		// PrivateDependencyModuleNames.Add("OnlineSubsystem");
+        // 3) Modules dont BOZO dépend directement
+        PublicDependencyModuleNames.AddRange(new string[]
+        {
+            "Core",
+            "CoreUObject",
+            "Engine",
+            "InputCore",
 
-		// To include OnlineSubsystemSteam, add it to the plugins section in your uproject file with the Enabled attribute set to true
-	}
+            // pour exposer vos UFUNCTION(BlueprintCallable) dans 
+            // UBlueprintFunctionLibrary
+            "Kismet",
+
+            // pour votre plugin Assimp (si votre code BOZO l'utilise)
+            "UE_Assimp"
+        });
+
+        // 4) Modules privés (à compléter si besoin)
+        PrivateDependencyModuleNames.AddRange(new string[]
+        {
+            // "Slate",
+            // "SlateCore",
+        });
+
+        // 5) Modules chargés dynamiquement (si besoin)
+        DynamicallyLoadedModuleNames.AddRange(new string[]
+        {
+            // ex: "OnlineSubsystemSteam"
+        });
+    }
 }

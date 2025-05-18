@@ -2,10 +2,10 @@
 
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
-#include "UMyFileUtils.generated.h"
+#include "FilesImportation.generated.h"
 
 UCLASS()
-class BOZO_API UMyFileUtils : public UBlueprintFunctionLibrary
+class BOZO_API UFilesImportation : public UBlueprintFunctionLibrary
 {
     GENERATED_BODY()
 
@@ -17,9 +17,9 @@ public:
      * @param Success                       (out) true si au moins un fichier a été trouvé.
      */
     UFUNCTION(BlueprintCallable, Category = "File IO")
-    static void GetFBXAndOBJFilesInFolder(
+    static void GetFBXFilesInFolder(
         const FString& RelativeOrAbsoluteFolderPath,
         TArray<FString>& OutFilenames,
-        bool& Success 
+        bool& Success
     );
 };
